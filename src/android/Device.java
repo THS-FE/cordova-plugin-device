@@ -30,6 +30,16 @@ import org.json.JSONObject;
 
 import android.provider.Settings;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.UUID;
+import android.os.Environment;
+
+
 public class Device extends CordovaPlugin {
     public static final String TAG = "Device";
 
@@ -75,7 +85,36 @@ public class Device extends CordovaPlugin {
             r.put("model", this.getModel());
             r.put("manufacturer", this.getManufacturer());
 	        r.put("isVirtual", this.isVirtual());
-            r.put("serial", this.getSerialNumber());
+            String sn = this.getSerialNumber();
+            r.put("serial", sn);
+            // liuyx 新增获取不到设备序列号时，进行其他途径数据获取（替代方案一ANDROID_ID，方案2本地SD卡随机码缓存，统一添加固定前缀，以便后续数据筛查），注意：如果通过其他途径获取的数据，已经不是设备序列号了，只能是相对唯一标识设备的字符串
+            // 获取到的数据ad开头的是，ANDROID_ID； LC开头的是本地生成的一串随机码，缓存SD卡的
+            if(sn==null||sn.equals("")||sn.equals("unknown")){
+                // 获取AndroidID
+                String androidId = Settings.System.getString(
+                        cordova.getActivity().getContentResolver(), Settings.Secure.ANDROID_ID);
+                if(androidId!=null&&!androidId.equals("")){
+                    //result.put("deviceId", "ad"+androidId);
+                    r.put("serial", "ad"+androidId);
+                }else{
+                    // 未获取到AndroidID，进行本地SD获取
+                    try {
+                        String localDeviceId = readLocalDeviceId();
+                        if(localDeviceId==null||localDeviceId.equals("")){
+                            String thsId = "LC"+ UUID.randomUUID().toString();
+                            saveLocalDeviceId(thsId);
+                            r.put("serial", thsId);
+                        }else{
+                            r.put("serial", localDeviceId);
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+
+            }
+
+
             callbackContext.success(r);
         }
         else {
@@ -171,4 +210,88 @@ public class Device extends CordovaPlugin {
 	    android.os.Build.PRODUCT.contains("sdk");
     }
 
+/**
+     * 保存本地的设备ID
+     * @param localDeviceId 设备ID
+     * @throws IOException
+     */
+    public  void saveLocalDeviceId(String localDeviceId) throws IOException {
+        // 创建目录
+        //获取内部存储状态
+        String state = Environment.getExternalStorageState();
+        //如果状态不是mounted，无法读写
+        if (!state.equals(Environment.MEDIA_MOUNTED)) {
+            return;
+        }
+        String sdCardDir = Environment.getExternalStorageDirectory().getAbsolutePath();
+        File appDir = new File(sdCardDir, "CaChe");
+        if (!appDir.exists()) {
+            appDir.mkdir();
+        }
+        File file = new File(appDir, fileName);
+        if (!file.exists()) {
+            file.createNewFile();
+        }
+        //保存android唯一表示符
+        try {
+            FileWriter fw = new FileWriter(file);
+            fw.write(localDeviceId);
+            fw.flush();
+            fw.close();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 读取本地存储的设备ID
+     * @return　本地存储的设备ID
+     * @throws IOException
+     */
+    public  String readLocalDeviceId() throws IOException {
+
+        // 创建目录
+        //获取内部存储状态
+        String state = Environment.getExternalStorageState();
+        //如果状态不是mounted，无法读写
+        if (!state.equals(Environment.MEDIA_MOUNTED)) {
+            return null;
+        }
+        String sdCardDir = Environment.getExternalStorageDirectory().getAbsolutePath();
+        File appDir = new File(sdCardDir, "CaChe");
+        if (!appDir.exists()) {
+            appDir.mkdir();
+        }
+
+        File file = new File(appDir, fileName);
+        if (!file.exists()) {
+            file.createNewFile();
+        }
+        BufferedReader reader = null;
+        StringBuilder content=null;
+        try {
+            FileReader fr = new FileReader(file);
+            content= new StringBuilder();
+            reader = new BufferedReader(fr);
+            String line;
+            while ((line= reader.readLine())!=null){
+                content.append(line);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }finally {
+            if (reader!=null){
+                try {
+                    reader.close();
+                }catch (IOException e){
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return content.toString();
+    }
 }
+
