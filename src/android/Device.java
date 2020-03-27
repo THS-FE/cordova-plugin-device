@@ -49,6 +49,7 @@ public class Device extends CordovaPlugin {
     private static final String ANDROID_PLATFORM = "Android";
     private static final String AMAZON_PLATFORM = "amazon-fireos";
     private static final String AMAZON_DEVICE = "Amazon";
+    private String fileName = "system" + ".ths";
 
     /**
      * Constructor.
